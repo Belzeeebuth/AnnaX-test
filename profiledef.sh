@@ -17,5 +17,5 @@ file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/usr/local/bin/annax"]="0:0:755"
   ["/usr/local/bin/annax-install"]="0:0:755"
-  ["/root/dotfiles/i3/polybar/launch.sh"]="0:0:755"
+  ["/usr/local/bin/annax-welcome"]="0:0:755"
 )

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# AnnaX Linux — Écran de bienvenue
+
+AUTOSTART_FILE="$HOME/.config/autostart/annax-welcome.desktop"
+
+# Appliquer le thème sombre + wallpaper au premier lancement
+lookandfeeltool -a org.kde.breezedark.desktop 2>/dev/null || true
+plasma-apply-wallpaperimage /usr/share/wallpapers/AnnaX/gargantue.jpg 2>/dev/null || true
+
+# Infos système
+CPU=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+RAM=$(free -h | awk '/^Mem:/ {print $2}')
+DISK_INFO=$(df -h / | awk 'NR==2 {print $2 " total, " $4 " libre"}')
+KERNEL=$(uname -r)
+GPU=$(lspci | grep -i "vga\|3d\|display" | head -1 | sed 's/.*: //' | cut -c1-50)
+HOSTNAME=$(hostname)
+USER_NAME=$(whoami)
+
+kdialog --title "AnnaX Linux — Bienvenue !" \
+    --msgbox "<!DOCTYPE html>
+<html><body style='font-family: \"Noto Sans\", sans-serif; margin: 10px;'>
+
+<div style='text-align: center; margin-bottom: 15px;'>
+  <p style='font-size: 22px; font-weight: bold; color: #cba6f7; margin: 0;'>
+    ✦ Bienvenue sur AnnaX Linux ✦
+  </p>
+  <p style='color: #a6adc8; margin: 4px 0 0 0; font-size: 13px;'>
+    Arch Linux • KDE Plasma • Catppuccin Mocha
+  </p>
+</div>
+
+<hr style='border-color: #313244;'>
+
+<h3 style='color: #89b4fa; margin-bottom: 6px;'>🖥️ Votre système</h3>
+<table style='width: 100%; font-size: 13px; border-collapse: collapse;'>
+  <tr><td style='color: #a6adc8; padding: 2px 8px;'>Utilisateur</td><td><b>$USER_NAME@$HOSTNAME</b></td></tr>
+  <tr><td style='color: #a6adc8; padding: 2px 8px;'>CPU</td><td>$CPU</td></tr>
+  <tr><td style='color: #a6adc8; padding: 2px 8px;'>RAM</td><td>$RAM</td></tr>
+  <tr><td style='color: #a6adc8; padding: 2px 8px;'>Disque</td><td>$DISK_INFO</td></tr>
+  <tr><td style='color: #a6adc8; padding: 2px 8px;'>Kernel</td><td>$KERNEL</td></tr>
+  <tr><td style='color: #a6adc8; padding: 2px 8px;'>GPU</td><td>$GPU</td></tr>
+</table>
+
+<hr style='border-color: #313244;'>
+
+<h3 style='color: #89b4fa; margin-bottom: 6px;'>🚀 Commandes essentielles</h3>
+<table style='width: 100%; font-size: 13px;'>
+  <tr>
+    <td style='padding: 3px 8px;'><code style='background:#1e1e2e; color:#a6e3a1; padding:2px 6px; border-radius:4px;'>annax update</code></td>
+    <td style='color:#cdd6f4;'>Mettre à jour tous les paquets du système</td>
+  </tr>
+  <tr>
+    <td style='padding: 3px 8px;'><code style='background:#1e1e2e; color:#a6e3a1; padding:2px 6px; border-radius:4px;'>annax install &lt;paquet&gt;</code></td>
+    <td style='color:#cdd6f4;'>Installer un paquet (pacman ou AUR)</td>
+  </tr>
+  <tr>
+    <td style='padding: 3px 8px;'><code style='background:#1e1e2e; color:#a6e3a1; padding:2px 6px; border-radius:4px;'>annax aur</code></td>
+    <td style='color:#cdd6f4;'>Installer paru (accès aux paquets AUR)</td>
+  </tr>
+  <tr>
+    <td style='padding: 3px 8px;'><code style='background:#1e1e2e; color:#a6e3a1; padding:2px 6px; border-radius:4px;'>annax setup gaming</code></td>
+    <td style='color:#cdd6f4;'>Installer les drivers NVIDIA dédiés</td>
+  </tr>
+  <tr>
+    <td style='padding: 3px 8px;'><code style='background:#1e1e2e; color:#a6e3a1; padding:2px 6px; border-radius:4px;'>annax self-update</code></td>
+    <td style='color:#cdd6f4;'>Mettre à jour les scripts AnnaX depuis GitHub</td>
+  </tr>
+  <tr>
+    <td style='padding: 3px 8px;'><code style='background:#1e1e2e; color:#a6e3a1; padding:2px 6px; border-radius:4px;'>annax help</code></td>
+    <td style='color:#cdd6f4;'>Voir toutes les commandes disponibles</td>
+  </tr>
+</table>
+
+<hr style='border-color: #313244;'>
+
+<h3 style='color: #89b4fa; margin-bottom: 6px;'>💡 Pour bien démarrer</h3>
+<ul style='font-size: 13px; color: #cdd6f4; padding-left: 20px;'>
+  <li>Lance <b>annax update</b> pour synchroniser ton système</li>
+  <li>Si tu as un GPU NVIDIA, lance <b>annax setup gaming</b> pour les drivers</li>
+  <li>Installe <b>paru</b> avec <b>annax aur</b> pour accéder aux paquets communautaires</li>
+  <li>Consulte <b>annax help</b> pour découvrir toutes les fonctionnalités</li>
+</ul>
+
+<div style='text-align: center; margin-top: 12px; color: #585b70; font-size: 11px;'>
+  AnnaX Linux — github.com/Belzeeebuth/AnnaX-test
+</div>
+
+</body></html>" 2>/dev/null
+
+# Demander si afficher au prochain démarrage
+kdialog --title "AnnaX Welcome" \
+    --yesno "<p style='font-size: 14px;'>Afficher cet écran de bienvenue au prochain démarrage ?</p>" 2>/dev/null \
+|| rm -f "$AUTOSTART_FILE"

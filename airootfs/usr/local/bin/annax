@@ -143,6 +143,14 @@ cmd_self_update() {
         warn "Impossible de télécharger annax-install (non bloquant)."
     fi
 
+    # Mise à jour de annax-welcome
+    if curl -fsSL "$repo/airootfs/usr/local/bin/annax-welcome" -o "$tmp"; then
+        sudo install -m755 "$tmp" /usr/local/bin/annax-welcome
+        ok "annax-welcome mis à jour."
+    else
+        warn "Impossible de télécharger annax-welcome (non bloquant)."
+    fi
+
     rm -f "$tmp"
     ok "Scripts AnnaX à jour. Relance annax pour voir les changements."
 }
