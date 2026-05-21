@@ -65,34 +65,39 @@ show_help() {
     echo -e "${BOLD}Usage :${NC}  annax <commande> [options]"
     echo ""
     echo -e "${BOLD}Paquets :${NC}"
-    echo -e "  ${GREEN}annax update${NC}                  Mettre à jour le système"
-    echo -e "  ${GREEN}annax install${NC} <paquet...>      Installer un ou plusieurs paquets"
-    echo -e "  ${GREEN}annax remove${NC}  <paquet...>      Désinstaller un paquet"
-    echo -e "  ${GREEN}annax search${NC}  <terme>          Rechercher un paquet"
-    echo -e "  ${GREEN}annax info${NC}    <paquet>         Infos sur un paquet"
-    echo -e "  ${GREEN}annax list${NC}                    Lister les paquets installés"
-    echo -e "  ${GREEN}annax orphans${NC}                 Lister les paquets orphelins"
-    echo -e "  ${GREEN}annax clean${NC}                   Nettoyer le cache pacman"
+    echo -e "  ${GREEN}annax update${NC}                         Mettre à jour tous les paquets (pacman + AUR si paru installé)"
+    echo -e "  ${GREEN}annax install${NC} <paquet...>             Installer un ou plusieurs paquets (pacman ou AUR auto-détecté)"
+    echo -e "  ${GREEN}annax remove${NC}  <paquet...>             Désinstaller un paquet et ses dépendances orphelines"
+    echo -e "  ${GREEN}annax search${NC}  <terme>                 Rechercher un paquet dans pacman et l'AUR"
+    echo -e "  ${GREEN}annax info${NC}    <paquet>                Afficher les détails d'un paquet (version, dépendances...)"
+    echo -e "  ${GREEN}annax list${NC}                           Lister tous les paquets installés explicitement"
+    echo -e "  ${GREEN}annax orphans${NC}                        Lister les paquets orphelins (plus requis par rien)"
+    echo -e "  ${GREEN}annax clean${NC}                          Nettoyer le cache pacman (libère de l'espace disque)"
     echo ""
     echo -e "${BOLD}Système :${NC}"
-    echo -e "  ${GREEN}annax gpu${NC}     [status|amd|nvidia|hybrid]   Gérer le GPU hybride"
-    echo -e "  ${GREEN}annax power${NC}   [status|auto|performance|powersave]  Mode CPU"
-    echo -e "  ${GREEN}annax mirrors${NC}                Mettre à jour les miroirs"
-    echo -e "  ${GREEN}annax services${NC}               Statut des services AnnaX"
-    echo -e "  ${GREEN}annax sysinfo${NC}                Infos système complètes"
+    echo -e "  ${GREEN}annax gpu${NC}     [status|amd|nvidia|hybrid]          Gérer le GPU (AMD intégré / NVIDIA dédié)"
+    echo -e "  ${GREEN}annax power${NC}   [status|auto|performance|powersave]  Changer le profil d'énergie CPU"
+    echo -e "  ${GREEN}annax mirrors${NC}                        Mettre à jour les miroirs pacman (plus rapide)"
+    echo -e "  ${GREEN}annax services${NC}                       Voir le statut des services système AnnaX"
+    echo -e "  ${GREEN}annax sysinfo${NC}                        Afficher les infos complètes du système"
     echo ""
     echo -e "${BOLD}Configuration :${NC}"
-    echo -e "  ${GREEN}annax dotfiles${NC} [hyprland|i3|kitty|waybar]  Réinstaller une config"
-    echo -e "  ${GREEN}annax theme${NC}   [mocha|latte|frappe|macchiato]  Changer le thème"
+    echo -e "  ${GREEN}annax dotfiles${NC} [hyprland|kitty|waybar]  Réinstaller une config de bureau depuis les defaults"
+    echo -e "  ${GREEN}annax theme${NC}   [mocha|latte|frappe|macchiato]      Changer le thème Catppuccin"
     echo ""
-    echo -e "${BOLD}Installation :${NC}"
-    echo -e "  ${GREEN}annax setup${NC}                  Lancer l'installeur AnnaX (live ISO)"
-    echo -e "  ${GREEN}annax setup gaming${NC}           Installer les drivers NVIDIA (après install)"
-    echo -e "  ${GREEN}annax aur${NC}                    Installer paru (helper AUR)"
+    echo -e "${BOLD}Installation & outils :${NC}"
+    echo -e "  ${GREEN}annax setup${NC}                          Lancer l'installeur AnnaX (depuis le live ISO uniquement)"
+    echo -e "  ${GREEN}annax setup gaming${NC}                   Installer les drivers NVIDIA (à faire après l'installation)"
+    echo -e "  ${GREEN}annax aur${NC}                            Installer paru (helper AUR pour les paquets communautaires)"
+    echo ""
+    echo -e "${BOLD}Mise à jour AnnaX :${NC}"
+    echo -e "  ${GREEN}annax self-update${NC}                    Mettre à jour les scripts annax depuis GitHub"
+    echo -e "                                       → télécharge la dernière version de annax et annax-install"
+    echo -e "                                       → utile après une mise à jour du projet AnnaX"
     echo ""
     echo -e "${BOLD}Autre :${NC}"
-    echo -e "  ${GREEN}annax version${NC}                Afficher la version"
-    echo -e "  ${GREEN}annax help${NC}                   Afficher cette aide"
+    echo -e "  ${GREEN}annax version${NC}                        Afficher la version actuelle de annax"
+    echo -e "  ${GREEN}annax help${NC}                           Afficher cette aide"
     echo ""
 }
 
@@ -112,6 +117,34 @@ cmd_update() {
         sudo pacman -Syu
     fi
     ok "Système à jour."
+}
+
+cmd_self_update() {
+    local repo="https://raw.githubusercontent.com/Belzeeebuth/AnnaX-test/master"
+    local tmp=$(mktemp)
+
+    section "Mise à jour des scripts AnnaX"
+    info "Téléchargement depuis GitHub..."
+
+    # Mise à jour de annax
+    if curl -fsSL "$repo/airootfs/usr/local/bin/annax" -o "$tmp"; then
+        sudo install -m755 "$tmp" /usr/local/bin/annax
+        ok "annax mis à jour."
+    else
+        err "Impossible de télécharger le script annax."
+        rm -f "$tmp"; exit 1
+    fi
+
+    # Mise à jour de annax-install
+    if curl -fsSL "$repo/airootfs/usr/local/bin/annax-install" -o "$tmp"; then
+        sudo install -m755 "$tmp" /usr/local/bin/annax-install
+        ok "annax-install mis à jour."
+    else
+        warn "Impossible de télécharger annax-install (non bloquant)."
+    fi
+
+    rm -f "$tmp"
+    ok "Scripts AnnaX à jour. Relance annax pour voir les changements."
 }
 
 cmd_install() {
@@ -570,6 +603,8 @@ main() {
         aur)            cmd_aur "$@" ;;
 
         # Meta
+        self-update|selfupdate)
+                        cmd_self_update ;;
         version|-v|--version)
             echo "annax v${VERSION} — AnnaX Linux"
             ;;
