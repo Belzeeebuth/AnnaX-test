@@ -1,0 +1,783 @@
+#!/usr/bin/env bash
+# AnnaX Linux — Installeur Interactif
+
+set -euo pipefail
+
+# ── Couleurs & constantes ─────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+TITLE="AnnaX Linux Installer"
+LOG="/tmp/annax-install.log"
+MOUNT="/mnt"
+
+# Variables globales
+DISK=""
+BOOT_PART=""
+ROOT_PART=""
+SWAP_PART=""
+HOSTNAME=""
+USERNAME=""
+USERPASS=""
+ROOTPASS=""
+LOCALE="fr_FR.UTF-8"
+TIMEZONE="Europe/Paris"
+KEYMAP="fr"
+DE=""
+FS_TYPE="btrfs"
+SWAP_SIZE=8
+USE_SWAP=true
+BOOT_SIZE=512
+
+# ── Helpers UI ────────────────────────────────────────────────
+msg()  { echo -e "${GREEN}▶${NC} $*"; }
+info() { echo -e "${BLUE}ℹ${NC} $*"; }
+warn() { echo -e "${YELLOW}⚠${NC} $*"; }
+err()  { echo -e "${RED}✗${NC} $*" >&2; }
+ok()   { echo -e "${GREEN}✓${NC} $*"; }
+
+die() { err "$1"; exit 1; }
+
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$LOG"; }
+
+dlg() { dialog --backtitle "AnnaX Linux Installer" "$@" 2>&1 >/dev/tty; }
+
+check_root() {
+    [[ $EUID -eq 0 ]] || die "Lance l'installeur en root : sudo annax setup"
+}
+
+check_internet() {
+    msg "Vérification connexion internet..."
+    ping -c1 -W3 archlinux.org &>/dev/null || die "Pas de connexion internet. Configure le réseau d'abord (nmtui)."
+    ok "Internet OK"
+}
+
+# ── Écran de bienvenue ────────────────────────────────────────
+welcome_screen() {
+    dialog --backtitle "$TITLE" \
+        --title "Bienvenue dans AnnaX Linux" \
+        --msgbox "\n\
+   █████╗ ███╗   ██╗███╗   ██╗ █████╗ ██╗  ██╗\n\
+  ██╔══██╗████╗  ██║████╗  ██║██╔══██╗╚██╗██╔╝\n\
+  ███████║██╔██╗ ██║██╔██╗ ██║███████║ ╚███╔╝ \n\
+  ██╔══██║██║╚██╗██║██║╚██╗██║██╔══██║ ██╔██╗ \n\
+  ██║  ██║██║ ╚████║██║ ╚████║██║  ██║██╔╝ ██╗\n\
+  ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝\n\
+\n\
+  Arch Linux — AMD+NVIDIA Hybrid — Catppuccin\n\
+  Installeur interactif v1.0\n\
+\n\
+  Ce que tu vas installer :\n\
+  • Arch Linux base + drivers AMD\n\
+  • TLP pour la batterie\n\
+  • Bureau de ton choix (KDE / Hyprland)\n\
+  • Configs pré-faites et thème Catppuccin\n\
+\n\
+  Pour les drivers NVIDIA, lance après démarrage :\n\
+  → annax setup gaming\n" 22 70
+
+    dialog --backtitle "$TITLE" \
+        --title "⚠ Attention" \
+        --yesno "\nCet installeur va EFFACER le disque sélectionné.\n\nAssurez-vous d'avoir sauvegardé vos données.\n\nContinuer ?" 10 50
+
+    [[ $? -eq 0 ]] || { clear; echo "Installation annulée."; exit 0; }
+}
+
+# ── Sélection du disque ───────────────────────────────────────
+select_disk() {
+    local disks=()
+    while IFS= read -r line; do
+        local dev size model
+        dev=$(echo "$line" | awk '{print $1}')
+        size=$(echo "$line" | awk '{print $2}')
+        model=$(echo "$line" | awk '{$1=$2=""; print $0}' | xargs)
+        disks+=("/dev/$dev" "$size - $model")
+    done < <(lsblk -dno NAME,SIZE,MODEL | grep -v "^loop\|^sr")
+
+    DISK=$(dlg --title "Sélection du disque" \
+        --menu "\nChoisis le disque d'installation :\n" 15 60 6 \
+        "${disks[@]}") || die "Aucun disque sélectionné."
+
+    # Confirmation
+    local disk_info
+    disk_info=$(lsblk "$DISK" -o NAME,SIZE,TYPE,MOUNTPOINT 2>/dev/null)
+    dialog --backtitle "$TITLE" \
+        --title "Confirmation" \
+        --yesno "\n⚠ TOUT sera effacé sur : $DISK\n\n$disk_info\n\nConfirmer ?" 15 60
+    [[ $? -eq 0 ]] || select_disk
+}
+
+# ── Système de fichiers ───────────────────────────────────────
+select_filesystem() {
+    FS_TYPE=$(dlg --title "Système de fichiers" \
+        --menu "\nChoisis le système de fichiers pour / :" 12 50 3 \
+        "btrfs"  "BTRFS avec snapshots (Recommandé)" \
+        "ext4"   "EXT4 — classique et stable" \
+        "xfs"    "XFS — bonnes perfs sur gros fichiers") || FS_TYPE="btrfs"
+}
+
+# ── Swap ─────────────────────────────────────────────────────
+configure_swap() {
+    dialog --backtitle "$TITLE" \
+        --title "Partition Swap" \
+        --yesno "\nCréer une partition swap ?\n(Recommandé si tu veux hiberner)" 8 50
+
+    if [[ $? -eq 0 ]]; then
+        USE_SWAP=true
+        SWAP_SIZE=$(dlg --title "Taille du Swap" \
+            --menu "\nTaille du swap :" 12 40 5 \
+            "4"  "4 Go" \
+            "8"  "8 Go (Recommandé)" \
+            "16" "16 Go" \
+            "32" "32 Go") || SWAP_SIZE=8
+    else
+        USE_SWAP=false
+    fi
+}
+
+# ── Locale & clavier ─────────────────────────────────────────
+configure_locale() {
+    LOCALE=$(dlg --title "Langue du système" \
+        --menu "\nChoisis ta locale :" 15 50 6 \
+        "fr_FR.UTF-8" "Français (France)" \
+        "en_US.UTF-8" "English (US)" \
+        "en_GB.UTF-8" "English (UK)" \
+        "de_DE.UTF-8" "Deutsch" \
+        "es_ES.UTF-8" "Español" \
+        "it_IT.UTF-8" "Italiano") || LOCALE="fr_FR.UTF-8"
+
+    KEYMAP=$(dlg --title "Disposition clavier" \
+        --menu "\nChoisis ton clavier :" 12 40 5 \
+        "fr"      "AZERTY Français" \
+        "fr-latin9" "AZERTY Français (Latin 9)" \
+        "us"      "QWERTY US" \
+        "uk"      "QWERTY UK" \
+        "de"      "QWERTZ Allemand") || KEYMAP="fr"
+}
+
+# ── Timezone ──────────────────────────────────────────────────
+configure_timezone() {
+    local region
+    region=$(dlg --title "Région" \
+        --menu "\nChoisis ta région :" 15 50 8 \
+        "Europe"   "Europe" \
+        "America"  "Amérique" \
+        "Asia"     "Asie" \
+        "Africa"   "Afrique" \
+        "Australia" "Australie" \
+        "Pacific"  "Pacifique") || region="Europe"
+
+    local cities=()
+    while IFS= read -r tz; do
+        cities+=("$tz" "")
+    done < <(timedatectl list-timezones | grep "^$region/" | sed "s|^$region/||")
+
+    local city
+    city=$(dlg --title "Ville" \
+        --menu "\nChoisis ta ville :" 20 50 12 \
+        "${cities[@]}") || city="Paris"
+
+    TIMEZONE="$region/$city"
+}
+
+# ── Hostname ──────────────────────────────────────────────────
+configure_hostname() {
+    while true; do
+        HOSTNAME=$(dlg --title "Nom de la machine" \
+            --inputbox "\nEntre le hostname de ta machine :" 8 50 "annaxpc") || die "Annulé"
+        [[ -n "$HOSTNAME" && "$HOSTNAME" =~ ^[a-zA-Z0-9-]+$ ]] && break
+        dialog --msgbox "Hostname invalide. Utilise uniquement lettres, chiffres et tirets." 6 50
+    done
+}
+
+# ── Utilisateur ───────────────────────────────────────────────
+configure_user() {
+    while true; do
+        USERNAME=$(dlg --title "Nom d'utilisateur" \
+            --inputbox "\nEntre ton nom d'utilisateur :" 8 50 "") || die "Annulé"
+        [[ -n "$USERNAME" && "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] && break
+        dialog --msgbox "Nom invalide. Utilise uniquement des minuscules, chiffres et underscores." 6 50
+    done
+
+    while true; do
+        USERPASS=$(dlg --title "Mot de passe utilisateur" \
+            --passwordbox "\nMot de passe pour $USERNAME :" 8 50) || die "Annulé"
+        local confirm
+        confirm=$(dlg --title "Confirmation" \
+            --passwordbox "\nConfirme le mot de passe :" 8 50) || die "Annulé"
+        [[ "$USERPASS" == "$confirm" && -n "$USERPASS" ]] && break
+        dialog --msgbox "Les mots de passe ne correspondent pas ou sont vides." 6 50
+    done
+
+    while true; do
+        ROOTPASS=$(dlg --title "Mot de passe root" \
+            --passwordbox "\nMot de passe root :" 8 50) || die "Annulé"
+        local confirm
+        confirm=$(dlg --title "Confirmation root" \
+            --passwordbox "\nConfirme le mot de passe root :" 8 50) || die "Annulé"
+        [[ "$ROOTPASS" == "$confirm" && -n "$ROOTPASS" ]] && break
+        dialog --msgbox "Les mots de passe ne correspondent pas ou sont vides." 6 50
+    done
+}
+
+# ── Environnement de bureau ───────────────────────────────────
+select_de() {
+    DE=$(dlg --title "Environnement de bureau" \
+        --menu "\nChoisis ton environnement de bureau :\n" 12 65 2 \
+        "kde"      "KDE Plasma  — Moderne, personnalisable, Wayland" \
+        "hyprland" "Hyprland    — Tiling WM Wayland, config Catppuccin incluse") \
+        || die "Annulé"
+
+    if [[ "$DE" == "hyprland" ]]; then
+        dialog --backtitle "$TITLE" \
+            --title "Config incluse ✨" \
+            --msgbox "\nUne configuration complète Catppuccin sera installée :\n\
+\n\
+  • Hyprland — animations, gaps, borders\n\
+  • Waybar   — barre avec RAM/CPU/réseau/batterie\n\
+  • Wofi     — lanceur d'apps\n\
+  • Hyprlock — écran de verrouillage\n\
+  • Dunst    — notifications stylées\n\
+  • Kitty    — terminal avec thème Catppuccin\n" 16 60
+    fi
+}
+
+# ── Récap avant install ───────────────────────────────────────
+show_summary() {
+    local swap_info
+    $USE_SWAP && swap_info="${SWAP_SIZE} Go" || swap_info="Non"
+
+    dialog --backtitle "$TITLE" \
+        --title "Récapitulatif — Dernière chance !" \
+        --yesno "\n\
+  Disque      : $DISK\n\
+  Filesystem  : $FS_TYPE\n\
+  Swap        : $swap_info\n\
+  Hostname    : $HOSTNAME\n\
+  Utilisateur : $USERNAME\n\
+  Locale      : $LOCALE\n\
+  Clavier     : $KEYMAP\n\
+  Timezone    : $TIMEZONE\n\
+  Bureau      : $DE\n\
+  GPU         : AMD (NVIDIA via annax setup gaming)\n\
+\n\
+  ⚠ $DISK sera ENTIÈREMENT FORMATÉ.\n\
+\n\
+  Lancer l'installation ?" 20 60
+
+    [[ $? -eq 0 ]] || { clear; echo "Installation annulée."; exit 0; }
+}
+
+# ── Partitionnement ───────────────────────────────────────────
+partition_disk() {
+    msg "Partitionnement de $DISK..."
+    log "Partitionnement: $DISK, swap=$USE_SWAP ($SWAP_SIZE Go), fs=$FS_TYPE"
+
+    wipefs -af "$DISK" >> "$LOG" 2>&1
+    sgdisk -Z "$DISK" >> "$LOG" 2>&1
+
+    if $USE_SWAP; then
+        sgdisk -n 1:0:+${BOOT_SIZE}M  -t 1:ef00 -c 1:"EFI"  \
+               -n 2:0:+${SWAP_SIZE}G  -t 2:8200 -c 2:"SWAP" \
+               -n 3:0:0               -t 3:8300 -c 3:"ROOT" \
+               "$DISK" >> "$LOG" 2>&1
+    else
+        sgdisk -n 1:0:+${BOOT_SIZE}M  -t 1:ef00 -c 1:"EFI" \
+               -n 2:0:0               -t 2:8300 -c 2:"ROOT" \
+               "$DISK" >> "$LOG" 2>&1
+    fi
+
+    partprobe "$DISK" >> "$LOG" 2>&1
+    sleep 2
+
+    # Flags boot+esp obligatoires pour certains firmwares UEFI
+    parted -s "$DISK" set 1 boot on >> "$LOG" 2>&1
+    parted -s "$DISK" set 1 esp on  >> "$LOG" 2>&1
+
+    # Noms des partitions (nvme vs sda)
+    if [[ "$DISK" == *"nvme"* ]]; then
+        BOOT_PART="${DISK}p1"
+        if $USE_SWAP; then
+            SWAP_PART="${DISK}p2"
+            ROOT_PART="${DISK}p3"
+        else
+            ROOT_PART="${DISK}p2"
+        fi
+    else
+        BOOT_PART="${DISK}1"
+        if $USE_SWAP; then
+            SWAP_PART="${DISK}2"
+            ROOT_PART="${DISK}3"
+        else
+            ROOT_PART="${DISK}2"
+        fi
+    fi
+
+    ok "Partitionnement terminé"
+}
+
+# ── Formatage ─────────────────────────────────────────────────
+format_partitions() {
+    msg "Formatage des partitions..."
+
+    mkfs.fat -F32 -n "EFI" "$BOOT_PART" >> "$LOG" 2>&1
+
+    if $USE_SWAP; then
+        mkswap -L "SWAP" "$SWAP_PART" >> "$LOG" 2>&1
+        swapon "$SWAP_PART" >> "$LOG" 2>&1
+    fi
+
+    case "$FS_TYPE" in
+        btrfs)
+            mkfs.btrfs -f -L "ROOT" "$ROOT_PART" >> "$LOG" 2>&1
+            mount "$ROOT_PART" "$MOUNT" >> "$LOG" 2>&1
+            # Sous-volumes BTRFS
+            btrfs subvolume create "$MOUNT/@"        >> "$LOG" 2>&1
+            btrfs subvolume create "$MOUNT/@home"    >> "$LOG" 2>&1
+            btrfs subvolume create "$MOUNT/@snapshots" >> "$LOG" 2>&1
+            btrfs subvolume create "$MOUNT/@var_log" >> "$LOG" 2>&1
+            umount "$MOUNT" >> "$LOG" 2>&1
+            mount -o noatime,compress=zstd,subvol=@ "$ROOT_PART" "$MOUNT" >> "$LOG" 2>&1
+            mkdir -p "$MOUNT"/{home,.snapshots,var/log,boot/efi}
+            mount -o noatime,compress=zstd,subvol=@home    "$ROOT_PART" "$MOUNT/home" >> "$LOG" 2>&1
+            mount -o noatime,compress=zstd,subvol=@snapshots "$ROOT_PART" "$MOUNT/.snapshots" >> "$LOG" 2>&1
+            mount -o noatime,compress=zstd,subvol=@var_log "$ROOT_PART" "$MOUNT/var/log" >> "$LOG" 2>&1
+            ;;
+        ext4)
+            mkfs.ext4 -L "ROOT" "$ROOT_PART" >> "$LOG" 2>&1
+            mount "$ROOT_PART" "$MOUNT" >> "$LOG" 2>&1
+            mkdir -p "$MOUNT"/{home,boot/efi}
+            ;;
+        xfs)
+            mkfs.xfs -f -L "ROOT" "$ROOT_PART" >> "$LOG" 2>&1
+            mount "$ROOT_PART" "$MOUNT" >> "$LOG" 2>&1
+            mkdir -p "$MOUNT"/{home,boot/efi}
+            ;;
+    esac
+
+    mount "$BOOT_PART" "$MOUNT/boot/efi" >> "$LOG" 2>&1
+    ok "Formatage terminé"
+}
+
+# ── Paquets par DE ────────────────────────────────────────────
+get_de_packages() {
+    local base_pkgs=(
+        base base-devel linux linux-headers linux-firmware
+        amd-ucode grub efibootmgr os-prober
+        networkmanager bluez bluez-utils
+        pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber
+        mesa lib32-mesa xf86-video-amdgpu vulkan-radeon lib32-vulkan-radeon
+        libva-mesa-driver lib32-libva-mesa-driver
+        power-profiles-daemon tlp tlp-rdw thermald acpi acpid
+        btrfs-progs dosfstools e2fsprogs ntfs-3g
+        sudo polkit dbus upower udisks2 gvfs git wget curl
+        ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
+        kitty neovim btop fastfetch zsh starship
+    )
+
+    local de_pkgs=()
+    case "$DE" in
+        kde)
+            de_pkgs=(plasma-meta sddm sddm-kcm packagekit-qt6
+                     dolphin konsole kate ark spectacle gwenview okular
+                     kcalc kdeconnect partitionmanager kdialog
+                     xdg-user-dirs)
+            ;;
+        hyprland)
+            de_pkgs=(hyprland hyprpaper hyprlock hypridle hyprpicker
+                     xdg-desktop-portal-hyprland waybar wofi dunst
+                     grim slurp wl-clipboard cliphist nwg-look
+                     qt5-wayland qt6-wayland polkit-kde-agent sddm
+                     thunar thunar-archive-plugin pavucontrol playerctl
+                     papirus-icon-theme)
+            ;;
+    esac
+
+    echo "${base_pkgs[@]}" "${de_pkgs[@]}"
+}
+
+# ── Installation base ─────────────────────────────────────────
+install_base() {
+    msg "Installation du système de base..."
+    log "Installation paquets DE: $DE"
+
+    local pkgs
+    pkgs=$(get_de_packages)
+
+    # Miroirs — reflector avec fallback garanti
+    cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
+    msg "Sélection des miroirs..."
+    reflector --country France,Germany,Belgium \
+              --latest 10 \
+              --sort rate \
+              --timeout 15 \
+              --save /etc/pacman.d/mirrorlist >> "$LOG" 2>&1 || true
+
+    # Si reflector a laissé le mirrorlist vide, miroirs hardcodés en fallback
+    if ! grep -q "^Server" /etc/pacman.d/mirrorlist 2>/dev/null; then
+        warn "Reflector a échoué, utilisation des miroirs de secours"
+        cat > /etc/pacman.d/mirrorlist <<'MIRRORS'
+Server = https://archlinux.mirrors.ovh.net/archlinux/$repo/os/$arch
+Server = https://mirror.cyberbits.eu/archlinux/$repo/os/$arch
+Server = https://mirrors.ircam.fr/pub/archlinux/$repo/os/$arch
+Server = https://mirror.puzzle.ch/archlinux/$repo/os/$arch
+Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
+MIRRORS
+    fi
+
+    # Multilib dans le live
+    if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
+        sed -i '/^#\[multilib\]/{s/^#//;n;s/^#//}' /etc/pacman.conf
+    fi
+    pacman -Sy --noconfirm >> "$LOG" 2>&1 || true
+
+    # Keyring
+    pacman-key --init >> "$LOG" 2>&1
+    pacman-key --populate archlinux >> "$LOG" 2>&1
+
+    # shellcheck disable=SC2086
+    pacstrap "$MOUNT" $pkgs 2>&1 | tee -a "$LOG" | \
+        dialog --backtitle "$TITLE" \
+               --title "Installation en cours..." \
+               --progressbox "Installation des paquets...\n(ça peut prendre 10-20 minutes)" \
+               20 70
+
+    ok "Paquets installés"
+}
+
+# ── Configuration système ─────────────────────────────────────
+configure_system() {
+    msg "Configuration du système..."
+
+    # fstab
+    genfstab -U "$MOUNT" >> "$MOUNT/etc/fstab"
+
+    # Chroot config
+    arch-chroot "$MOUNT" /bin/bash <<CHROOT
+set -e
+
+# Timezone
+ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+hwclock --systohc
+
+# Locale
+sed -i "s/^#$LOCALE/$LOCALE/" /etc/locale.gen
+echo "LANG=$LOCALE" > /etc/locale.conf
+locale-gen
+
+# Clavier console
+echo "KEYMAP=$KEYMAP" > /etc/vconsole.conf
+
+# Clavier X11 (KDE, i3, toutes sessions X/Wayland)
+mkdir -p /etc/X11/xorg.conf.d
+cat > /etc/X11/xorg.conf.d/00-keyboard.conf <<EOF2
+Section "InputClass"
+    Identifier "system-keyboard"
+    MatchIsKeyboard "on"
+    Option "XkbLayout" "$KEYMAP"
+    Option "XkbModel" "pc105"
+EndSection
+EOF2
+
+# Clavier KDE Wayland (kxkbrc système)
+mkdir -p /etc/xdg
+cat > /etc/xdg/kxkbrc <<EOF2
+[Layout]
+DisplayNames=
+LayoutList=$KEYMAP
+Model=pc105
+Use=true
+VariantList=
+EOF2
+
+# Hostname
+echo "$HOSTNAME" > /etc/hostname
+cat > /etc/hosts <<EOF
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
+EOF
+
+# Utilisateurs
+echo "root:$ROOTPASS" | chpasswd
+useradd -m -G wheel,audio,video,optical,storage,network,power -s /bin/zsh "$USERNAME"
+echo "$USERNAME:$USERPASS" | chpasswd
+
+# Sudo
+sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+
+# Services
+systemctl enable NetworkManager
+systemctl enable bluetooth
+systemctl enable acpid
+systemctl enable tlp
+systemctl enable thermald
+systemctl enable power-profiles-daemon
+
+# Display Manager
+systemctl enable sddm
+
+# Multilib
+cat > /etc/pacman.conf <<'PACMANCONF'
+[options]
+HoldPkg     = pacman glibc
+Architecture = auto
+CheckSpace
+ParallelDownloads = 5
+SigLevel    = Required DatabaseOptional
+LocalFileSigLevel = Optional
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+PACMANCONF
+
+# mkinitcpio
+sed -i 's/MODULES=()/MODULES=(amdgpu)/' /etc/mkinitcpio.conf
+mkinitcpio -P
+
+# OS identity
+cat > /etc/os-release <<'EOF'
+NAME="AnnaX Linux"
+PRETTY_NAME="AnnaX Linux"
+ID=annax
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="1;35"
+EOF
+
+# GRUB
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=AnnaX --recheck
+# Fallback universel — certains firmwares UEFI ignorent les entrées non-standard
+mkdir -p /boot/efi/EFI/BOOT
+cp /boot/efi/EFI/AnnaX/grubx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
+sed -i 's/GRUB_TIMEOUT=5/GRUB_TIMEOUT=3/' /etc/default/grub
+sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="AnnaX Linux"/' /etc/default/grub
+grub-mkconfig -o /boot/grub/grub.cfg
+
+# Zsh config globale
+cat > /etc/zsh/zshrc <<'ZSHRC'
+# Starship prompt
+eval "\$(starship init zsh)"
+# Aliases
+alias ls='eza --icons'
+alias ll='eza -la --icons'
+alias cat='bat'
+alias grep='grep --color=auto'
+alias update='annax update'
+ZSHRC
+
+CHROOT
+
+    # ── Copie des outils AnnaX sur le système installé ────────
+    cp /usr/local/bin/annax "$MOUNT/usr/local/bin/annax"
+    chmod +x "$MOUNT/usr/local/bin/annax"
+
+    # ── zshrc utilisateur (évite zsh-newuser-install) ─────────
+    local user_zshrc="$MOUNT/home/$USERNAME/.zshrc"
+    cat > "$user_zshrc" <<'ZSHRC'
+# AnnaX Linux — Zsh config utilisateur
+# Charge la config globale
+[[ -f /etc/zsh/zshrc ]] && source /etc/zsh/zshrc
+ZSHRC
+    arch-chroot "$MOUNT" chown "$USERNAME:$USERNAME" "/home/$USERNAME/.zshrc"
+
+    # ── Supprimer plasma-welcome (inclus dans plasma-meta) ────
+    arch-chroot "$MOUNT" pacman -Rns --noconfirm plasma-welcome 2>/dev/null || true
+
+    # Créer l'entrée EFI depuis le live (hors chroot, accès direct à efivarfs)
+    local boot_disk boot_partnum
+    if [[ "$DISK" == *"nvme"* ]]; then
+        boot_disk="$DISK"
+        boot_partnum="1"
+    else
+        boot_disk="$DISK"
+        boot_partnum="1"
+    fi
+    efibootmgr --create \
+        --disk "$boot_disk" \
+        --part "$boot_partnum" \
+        --label "AnnaX Linux" \
+        --loader /EFI/AnnaX/grubx64.efi \
+        >> "$LOG" 2>&1 || \
+    efibootmgr --create \
+        --disk "$boot_disk" \
+        --part "$boot_partnum" \
+        --label "AnnaX Linux" \
+        --loader /EFI/BOOT/BOOTX64.EFI \
+        >> "$LOG" 2>&1 || true
+
+    install_dotfiles
+    ok "Configuration terminée"
+}
+
+# ── Dotfiles ──────────────────────────────────────────────────
+install_dotfiles() {
+    local user_home="$MOUNT/home/$USERNAME"
+    local wallpaper_src="/usr/share/backgrounds/annax/gargantue.jpg"
+
+    if [[ "$DE" == "hyprland" ]]; then
+        mkdir -p "$user_home/.config"/{hypr,waybar,wofi,dunst,kitty}
+
+        if [[ -d /root/dotfiles/hyprland ]]; then
+            cp -r /root/dotfiles/hyprland/. "$user_home/.config/"
+        fi
+
+        # Wallpaper pour hyprpaper
+        cp "$wallpaper_src" "$user_home/.config/hypr/wallpaper.jpg"
+
+    elif [[ "$DE" == "kde" ]]; then
+        # Wallpaper
+        mkdir -p "$MOUNT/usr/share/wallpapers/AnnaX"
+        cp "$wallpaper_src" "$MOUNT/usr/share/wallpapers/AnnaX/gargantue.jpg"
+
+        # Mode sombre système (sans session active)
+        mkdir -p "$MOUNT/etc/xdg"
+        cat > "$MOUNT/etc/xdg/kdeglobals" <<'EOF'
+[KDE]
+LookAndFeelPackage=org.kde.breezedark.desktop
+
+[General]
+ColorScheme=BreezeDark
+EOF
+        cat > "$MOUNT/etc/xdg/plasmarc" <<'EOF'
+[Theme]
+name=breeze-dark
+EOF
+
+        # Script de premier lancement (wallpaper + welcome)
+        cat > "$MOUNT/usr/local/bin/annax-welcome" <<'WELCOME'
+#!/usr/bin/env bash
+# Applique le mode sombre + wallpaper + welcome au premier démarrage
+lookandfeeltool -a org.kde.breezedark.desktop 2>/dev/null || true
+plasma-apply-wallpaperimage /usr/share/wallpapers/AnnaX/gargantue.jpg 2>/dev/null || true
+kdialog --title "Bienvenue sur AnnaX Linux !" \
+    --msgbox "<h2>Bienvenue sur AnnaX Linux !</h2>
+<p>Votre système Arch Linux est prêt.</p>
+<hr>
+<p><b>Commandes essentielles (dans un terminal) :</b></p>
+<ul>
+<li><b>annax update</b> — Mettre à jour le système</li>
+<li><b>annax install</b> &lt;paquet&gt; — Installer un paquet</li>
+<li><b>annax setup gaming</b> — Installer les drivers NVIDIA</li>
+<li><b>annax aur</b> — Installer paru (AUR helper)</li>
+<li><b>annax help</b> — Toutes les commandes</li>
+</ul>" 2>/dev/null || true
+rm -f "$HOME/.config/autostart/annax-welcome.desktop"
+WELCOME
+        chmod +x "$MOUNT/usr/local/bin/annax-welcome"
+
+        # Autostart premier lancement
+        mkdir -p "$user_home/.config/autostart"
+        cat > "$user_home/.config/autostart/annax-welcome.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=AnnaX Welcome
+Exec=/usr/local/bin/annax-welcome
+Hidden=false
+NoDisplay=true
+X-KDE-autostart-after=panel
+EOF
+
+    fi
+
+    # Propriétaire correct
+    arch-chroot "$MOUNT" chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.config" 2>/dev/null || true
+
+    # ── SDDM — thème + clavier ────────────────────────────────
+    configure_sddm
+}
+
+configure_sddm() {
+    mkdir -p "$MOUNT/etc/sddm.conf.d"
+
+    # Thème catppuccin-mocha bundlé dans l'ISO
+    if [[ -d /usr/share/sddm/themes/catppuccin-mocha-mauve ]]; then
+        mkdir -p "$MOUNT/usr/share/sddm/themes"
+        cp -r /usr/share/sddm/themes/catppuccin-mocha-mauve "$MOUNT/usr/share/sddm/themes/"
+        local sddm_theme="catppuccin-mocha-mauve"
+    else
+        local sddm_theme=""
+        warn "Thème SDDM catppuccin-mocha-mauve non trouvé dans l'ISO"
+    fi
+
+    cat > "$MOUNT/etc/sddm.conf.d/annax.conf" <<EOF
+[Theme]
+Current=${sddm_theme}
+
+[General]
+InputMethod=
+
+[X11]
+KeyboardLayout=${KEYMAP}
+KeyboardModel=pc105
+EOF
+}
+
+# ── Fin ───────────────────────────────────────────────────────
+finish() {
+    dialog --backtitle "$TITLE" \
+        --title "Installation terminée !" \
+        --msgbox "\n\
+  AnnaX Linux a été installé avec succès !\n\
+\n\
+  Résumé :\n\
+  • Système    : Arch Linux sur $DISK\n\
+  • Bureau     : $DE\n\
+  • GPU        : AMD (drivers NVIDIA via annax setup gaming)\n\
+  • Utilisateur: $USERNAME\n\
+\n\
+  Commande principale disponible : annax\n\
+  → annax update / annax install / annax gpu ...\n\
+\n\
+  Pour les drivers NVIDIA, après redémarrage :\n\
+  → annax setup gaming\n\
+\n\
+  Redémarre maintenant :\n\
+  → umount -R /mnt && reboot\n\
+\n\
+  Log complet : $LOG" 22 60
+
+    clear
+    echo ""
+    echo -e "${GREEN}${BOLD}Installation de AnnaX Linux terminée !${NC}"
+    echo ""
+    echo -e "  ${CYAN}Redémarre avec :${NC}  umount -R /mnt && reboot"
+    echo ""
+}
+
+# ── Main ──────────────────────────────────────────────────────
+main() {
+    clear
+    check_root
+    check_internet
+
+    welcome_screen
+    select_disk
+    select_filesystem
+    configure_swap
+    configure_locale
+    configure_timezone
+    configure_hostname
+    configure_user
+    select_de
+    show_summary
+
+    partition_disk
+    format_partitions
+    install_base
+    configure_system
+    finish
+}
+
+main "$@"

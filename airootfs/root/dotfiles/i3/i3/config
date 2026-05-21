@@ -1,0 +1,184 @@
+# ══════════════════════════════════════════════════════════════
+# AnnaX — i3 Config — Catppuccin Mocha
+# ══════════════════════════════════════════════════════════════
+
+set $mod Mod4
+
+# ── Catppuccin Mocha ──────────────────────────────────────────
+set $base     #1e1e2e
+set $mantle   #181825
+set $crust    #11111b
+set $text     #cdd6f4
+set $subtext0 #a6adc8
+set $surface0 #313244
+set $surface1 #45475a
+set $blue     #89b4fa
+set $mauve    #cba6f7
+set $red      #f38ba8
+set $green    #a6e3a1
+set $yellow   #f9e2af
+set $peach    #fab387
+
+# ── Polices ───────────────────────────────────────────────────
+font pango:JetBrains Mono Nerd Font 11
+
+# ── Démarrage ─────────────────────────────────────────────────
+exec --no-startup-id dbus-launch
+exec --no-startup-id systemctl --user start pipewire
+exec --no-startup-id nm-applet
+exec --no-startup-id dunst
+exec --no-startup-id picom --daemon
+exec --no-startup-id feh --bg-fill ~/.config/i3/wallpaper.jpg
+exec --no-startup-id /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+exec_always --no-startup-id $HOME/.config/polybar/launch.sh
+
+# ── Comportement ──────────────────────────────────────────────
+floating_modifier $mod
+default_border pixel 2
+default_floating_border pixel 2
+gaps inner 8
+gaps outer 6
+smart_gaps on
+smart_borders on
+
+# ── Couleurs des bordures ─────────────────────────────────────
+# class                 border    bg        text      indicator child_border
+client.focused          $mauve    $surface0 $text     $blue     $mauve
+client.focused_inactive $surface1 $base     $subtext0 $surface1 $surface1
+client.unfocused        $surface0 $base     $subtext0 $surface0 $surface0
+client.urgent           $red      $base     $text     $red      $red
+client.placeholder      $base     $base     $text     $base     $base
+
+# ── Workspaces ────────────────────────────────────────────────
+set $ws1  "1: 󰈹 Web"
+set $ws2  "2: 󰨞 Code"
+set $ws3  "3:  Terminal"
+set $ws4  "4: 󰙪 Fichiers"
+set $ws5  "5:  Musique"
+set $ws6  "6:  Chat"
+set $ws7  "7:  Images"
+set $ws8  "8:  Vidéo"
+set $ws9  "9: 󰒃 Système"
+
+bind $mod+1 workspace $ws1
+bind $mod+2 workspace $ws2
+bind $mod+3 workspace $ws3
+bind $mod+4 workspace $ws4
+bind $mod+5 workspace $ws5
+bind $mod+6 workspace $ws6
+bind $mod+7 workspace $ws7
+bind $mod+8 workspace $ws8
+bind $mod+9 workspace $ws9
+
+bind $mod+Shift+1 move container to workspace $ws1
+bind $mod+Shift+2 move container to workspace $ws2
+bind $mod+Shift+3 move container to workspace $ws3
+bind $mod+Shift+4 move container to workspace $ws4
+bind $mod+Shift+5 move container to workspace $ws5
+bind $mod+Shift+6 move container to workspace $ws6
+bind $mod+Shift+7 move container to workspace $ws7
+bind $mod+Shift+8 move container to workspace $ws8
+bind $mod+Shift+9 move container to workspace $ws9
+
+# Apps sur workspaces spécifiques
+assign [class="firefox"]        $ws1
+assign [class="Code"]           $ws2
+assign [class="Thunar"]         $ws4
+assign [class="Spotify"]        $ws5
+assign [class="discord"]        $ws6
+assign [class="telegram-desktop"] $ws6
+assign [class="vlc"]            $ws8
+
+# ── Keybindings ───────────────────────────────────────────────
+bindsym $mod+Return       exec alacritty
+bindsym $mod+e            exec thunar
+bindsym $mod+b            exec firefox
+bindsym $mod+d            exec rofi -show drun
+bindsym $mod+shift+d      exec rofi -show run
+
+bindsym $mod+Shift+q      kill
+bindsym $mod+Shift+r      restart
+bindsym $mod+Shift+e      exec "i3-nagbar -t warning -m 'Quitter i3 ?' -B 'Oui' 'i3-msg exit'"
+
+# Verrouillage
+bindsym $mod+l            exec i3lock -c 1e1e2e --blur 5
+
+# Screenshots
+bindsym Print             exec scrot '%Y-%m-%d_%H%M%S.png' -e 'mv $f ~/Images/'
+bindsym $mod+Print        exec scrot -s '%Y-%m-%d_%H%M%S.png' -e 'mv $f ~/Images/'
+
+# Volume
+bindsym XF86AudioRaiseVolume exec pactl set-sink-volume @DEFAULT_SINK@ +5%
+bindsym XF86AudioLowerVolume exec pactl set-sink-volume @DEFAULT_SINK@ -5%
+bindsym XF86AudioMute        exec pactl set-sink-mute @DEFAULT_SINK@ toggle
+bindsym XF86AudioMicMute     exec pactl set-source-mute @DEFAULT_SOURCE@ toggle
+
+# Luminosité
+bindsym XF86MonBrightnessUp   exec brightnessctl set +5%
+bindsym XF86MonBrightnessDown exec brightnessctl set 5%-
+
+# Média
+bindsym XF86AudioPlay   exec playerctl play-pause
+bindsym XF86AudioNext   exec playerctl next
+bindsym XF86AudioPrev   exec playerctl previous
+
+# Focus
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+Left  focus left
+bindsym $mod+Down  focus down
+bindsym $mod+Up    focus up
+bindsym $mod+Right focus right
+
+# Déplacer
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+bindsym $mod+Shift+Left  move left
+bindsym $mod+Shift+Down  move down
+bindsym $mod+Shift+Up    move up
+bindsym $mod+Shift+Right move right
+
+# Layout
+bindsym $mod+v split h
+bindsym $mod+s split v
+bindsym $mod+f fullscreen toggle
+bindsym $mod+Shift+f floating toggle
+bindsym $mod+space focus mode_toggle
+bindsym $mod+a focus parent
+
+# Layouts
+bindsym $mod+t layout tabbed
+bindsym $mod+Shift+t layout toggle split
+
+# Mode resize
+mode "resize" {
+    bindsym h resize shrink width  10 px or 10 ppt
+    bindsym j resize grow   height 10 px or 10 ppt
+    bindsym k resize shrink height 10 px or 10 ppt
+    bindsym l resize grow   width  10 px or 10 ppt
+    bindsym Left  resize shrink width  10 px or 10 ppt
+    bindsym Down  resize grow   height 10 px or 10 ppt
+    bindsym Up    resize shrink height 10 px or 10 ppt
+    bindsym Right resize grow   width  10 px or 10 ppt
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+r mode "resize"
+
+# Scratchpad
+bindsym $mod+shift+minus move scratchpad
+bindsym $mod+minus scratchpad show
+
+# ── Règles ───────────────────────────────────────────────────
+for_window [class="pavucontrol"]        floating enable, resize set 700 500
+for_window [class="nm-connection-editor"] floating enable
+for_window [class="Arandr"]             floating enable
+for_window [title="Calculator"]         floating enable
+for_window [window_role="pop-up"]       floating enable
+for_window [window_role="bubble"]       floating enable
+for_window [window_role="dialog"]       floating enable
+for_window [window_type="dialog"]       floating enable

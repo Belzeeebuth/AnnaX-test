@@ -1,0 +1,113 @@
+/* Catppuccin Mocha — Rofi */
+configuration {
+    modi:            "drun,run,window";
+    show-icons:      true;
+    icon-theme:      "Papirus-Dark";
+    drun-display-format: "{name}";
+    display-drun:    " Apps";
+    display-run:     " Run";
+    display-window:  " Windows";
+    terminal:        "alacritty";
+    font:            "JetBrains Mono Nerd Font 12";
+}
+
+@theme "catppuccin-mocha"
+
+* {
+    bg-col:         rgba(30, 30, 46, 0.95);
+    bg-col-light:   rgba(49, 50, 68, 0.8);
+    border-col:     rgba(203, 166, 247, 0.6);
+    selected-col:   rgba(203, 166, 247, 1.0);
+    blue:           #89b4fa;
+    fg-col:         #cdd6f4;
+    fg-col2:        #a6adc8;
+    grey:           #45475a;
+    width:          600;
+    font:           "JetBrains Mono Nerd Font 12";
+}
+
+element-text, element-icon, mode-switcher {
+    background-color: inherit;
+    text-color: inherit;
+}
+
+window {
+    height:           500px;
+    border:           2px;
+    border-color:     @border-col;
+    background-color: @bg-col;
+    border-radius:    14px;
+}
+
+mainbox { background-color: @bg-col; }
+
+inputbar {
+    children:    [prompt, entry];
+    background-color: @bg-col;
+    border-radius: 10px;
+    padding:     4px;
+    margin:      10px 10px 0px 10px;
+    border:      1px;
+    border-color: @border-col;
+}
+
+prompt {
+    background-color: @selected-col;
+    padding:     8px;
+    text-color:  @bg-col;
+    border-radius: 8px;
+    margin:      0px 6px 0px 0px;
+    font:        "JetBrains Mono Nerd Font Bold 12";
+}
+
+entry {
+    padding:        8px;
+    text-color:     @fg-col;
+    background-color: transparent;
+}
+
+listview {
+    border:       0px;
+    padding:      8px;
+    margin:       6px;
+    background-color: @bg-col;
+    columns:      1;
+    lines:        10;
+}
+
+element {
+    padding:      8px 12px;
+    background-color: transparent;
+    text-color:   @fg-col;
+    border-radius: 8px;
+    margin:       2px;
+}
+
+element-icon { size: 26px; }
+
+element selected {
+    background-color: @selected-col;
+    text-color:  @bg-col;
+}
+
+element alternate {
+    background-color: @bg-col-light;
+}
+
+mode-switcher {
+    spacing:     0;
+    margin:      6px;
+}
+
+button {
+    padding:     8px 16px;
+    background-color: @bg-col-light;
+    text-color:  @fg-col2;
+    border-radius: 8px;
+    margin:      0 3px;
+}
+
+button selected {
+    background-color: @selected-col;
+    text-color:  @bg-col;
+}

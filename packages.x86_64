@@ -1,0 +1,183 @@
+# ── Base système ──────────────────────────────────────────────
+base
+base-devel
+linux
+linux-headers
+linux-firmware
+amd-ucode
+mkinitcpio
+mkinitcpio-archiso
+
+# ── Bootloader ────────────────────────────────────────────────
+grub
+efibootmgr
+os-prober
+grub-btrfs
+
+# ── Système de fichiers ───────────────────────────────────────
+btrfs-progs
+dosfstools
+e2fsprogs
+exfatprogs
+ntfs-3g
+gptfdisk
+parted
+
+# ── Réseau ───────────────────────────────────────────────────
+networkmanager
+network-manager-applet
+nm-connection-editor
+wireless_tools
+wpa_supplicant
+dhcpcd
+iwd
+bluez
+bluez-utils
+
+# ── GPU AMD (live ISO — NVIDIA installé par l'installeur) ─────
+mesa
+lib32-mesa
+xf86-video-amdgpu
+vulkan-radeon
+lib32-vulkan-radeon
+libva-mesa-driver
+lib32-libva-mesa-driver
+libglvnd
+lib32-libglvnd
+
+# ── Gestion énergie / CPU ─────────────────────────────────────
+tlp
+tlp-rdw
+thermald
+powertop
+power-profiles-daemon
+acpi
+acpid
+
+# ── Audio ─────────────────────────────────────────────────────
+pipewire
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+wireplumber
+pavucontrol
+playerctl
+
+# ── Outils système ────────────────────────────────────────────
+sudo
+polkit
+dbus
+upower
+udisks2
+gvfs
+gvfs-smb
+gvfs-mtp
+usbutils
+pciutils
+lshw
+htop
+btop
+fastfetch
+wget
+curl
+git
+unzip
+zip
+tar
+rsync
+reflector
+arch-install-scripts
+
+# ── Installeur & TUI ──────────────────────────────────────────
+dialog
+archinstall
+libnewt
+python
+python-pip
+
+# ── Terminal & Shell ──────────────────────────────────────────
+kitty
+alacritty
+bash
+zsh
+zsh-completions
+zsh-autosuggestions
+zsh-syntax-highlighting
+starship
+tmux
+neovim
+micro
+bat
+eza
+fzf
+ripgrep
+fd
+yazi
+
+# ── Polices ───────────────────────────────────────────────────
+ttf-jetbrains-mono-nerd
+ttf-nerd-fonts-symbols
+noto-fonts
+noto-fonts-emoji
+noto-fonts-cjk
+ttf-liberation
+ttf-dejavu
+
+# ── Affichage / Wayland / X11 ─────────────────────────────────
+xorg-server
+xorg-xinit
+xorg-xrandr
+xorg-xsetroot
+xorg-xprop
+xorg-xwininfo
+xorg-xwayland
+wayland
+wayland-protocols
+libinput
+brightnessctl
+
+# ── KDE Plasma ───────────────────────────────────────────────
+plasma-meta
+kde-applications-meta
+sddm
+sddm-kcm
+packagekit-qt6
+
+# ── Hyprland & composants ─────────────────────────────────────
+hyprland
+hyprpaper
+hyprlock
+hypridle
+hyprpicker
+xdg-desktop-portal-hyprland
+waybar
+wofi
+dunst
+grim
+slurp
+wl-clipboard
+cliphist
+swappy
+nwg-look
+qt5-wayland
+qt6-wayland
+polkit-kde-agent
+
+# ── Gestionnaires de fichiers ─────────────────────────────────
+thunar
+thunar-archive-plugin
+thunar-volman
+dolphin
+
+# ── Applications communes ─────────────────────────────────────
+firefox
+vlc
+gimp
+libreoffice-fresh
+kate
+code
+flameshot
+
+# ── Theming ───────────────────────────────────────────────────
+papirus-icon-theme
+kvantum
