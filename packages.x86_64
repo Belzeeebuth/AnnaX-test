@@ -63,6 +63,9 @@ wireplumber
 pavucontrol
 playerctl
 
+# ── VM / SPICE (copier-coller avec QEMU) ─────────────────────
+spice-vdagent
+
 # ── Outils système ────────────────────────────────────────────
 sudo
 polkit

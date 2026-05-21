@@ -106,6 +106,10 @@ test_qemu() {
 
     msg "Lancement de l'ISO AnnaX dans QEMU..."
     warn "Réseau : ethernet virtuel (NetworkManager le détecte automatiquement)"
+    warn "Copier-coller : SPICE activé — installe spice-vdagent dans la VM si besoin"
+
+    command -v remote-viewer &>/dev/null || \
+        warn "remote-viewer non trouvé, installe : sudo pacman -S virt-viewer"
 
     local qemu_cmd="qemu-system-x86_64 \
         -enable-kvm \
@@ -115,8 +119,12 @@ test_qemu() {
         -cdrom \"$iso\" \
         -drive file=\"$disk\",format=qcow2,if=virtio \
         -boot order=d,menu=on \
-        -vga virtio \
-        -display sdl \
+        -device virtio-vga \
+        -device virtio-serial-pci \
+        -chardev spicevmc,id=vdagent,name=vdagent \
+        -device virtserialport,chardev=vdagent,name=com.redhat.spice.0 \
+        -spice port=5930,disable-ticketing=on \
+        -display spice-app \
         -netdev user,id=net0 \
         -device virtio-net-pci,netdev=net0"
 
